@@ -16,7 +16,7 @@ The macOS BLE Tester application has been successfully refactored into a clean t
 
 #### New Structure
 ```
-Bluetooth_LE_Environmental_Sensing_Service/
+Inductosense_BLE_tester/
 ├── shared_driver/              # NEW: Cross-platform C++ library
 │   ├── include/psoc_driver/
 │   │   ├── protocol.h          # Protocol constants

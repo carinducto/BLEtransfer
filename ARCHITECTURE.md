@@ -191,7 +191,7 @@ To add support for a new platform (e.g., Linux, iOS, Android):
 ## File Organization Summary
 
 ```
-Bluetooth_LE_Environmental_Sensing_Service/
+Inductosense_BLE_tester/
 ├── shared_driver/           # Layer 3: C++ Driver Library
 │   ├── include/psoc_driver/
 │   ├── src/
