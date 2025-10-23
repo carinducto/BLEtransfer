@@ -1,0 +1,4 @@
+module PSoCDriverWrapper {
+    header "PSoCDriverWrapper.h"
+    export *
+}

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var bleManager = BLETransferManager()
+    @StateObject private var bleController = BLEController()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -37,23 +37,22 @@ struct ContentView: View {
                             .font(.headline)
 
                         // Mode badge
-                        Text(bleManager.currentMode)
+                        Text(bleController.currentMode)
                             .font(.caption)
                             .fontWeight(.semibold)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(modeColor(for: bleManager.currentMode))
+                            .background(modeColor(for: bleController.currentMode))
                             .foregroundColor(.white)
                             .cornerRadius(4)
                     }
                     .padding(.horizontal)
                     .padding(.top)
 
-                    if let waveform = bleManager.currentWaveform {
+                    if let waveform = bleController.currentWaveform {
                         WaveformFlashView(
-                            samples: waveform.samples,
-                            header: waveform.header,
-                            flashTrigger: bleManager.waveformFlashTrigger
+                            waveform: waveform,
+                            flashTrigger: bleController.waveformFlashTrigger
                         )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .padding()
@@ -96,18 +95,18 @@ struct ContentView: View {
 
             HStack {
                 Circle()
-                    .fill(bleManager.connectionStateColor)
+                    .fill(bleController.connectionStateColor)
                     .frame(width: 12, height: 12)
-                Text(bleManager.connectionStateText)
+                Text(bleController.connectionStateText)
                     .font(.body)
             }
 
-            if bleManager.isConnected {
-                Text("Device: \(bleManager.deviceName)")
+            if bleController.isConnected {
+                Text("Device: \(bleController.deviceName)")
                     .font(.caption)
                     .foregroundColor(.secondary)
 
-                Text("MTU: \(bleManager.negotiatedMTU) bytes")
+                Text("MTU: \(bleController.negotiatedMTU) bytes")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -119,61 +118,63 @@ struct ContentView: View {
             Text("Transfer Progress")
                 .font(.headline)
 
-            if bleManager.isTransferActive {
+            if bleController.isTransferActive, let stats = bleController.transferStats {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text("Blocks:")
                         Spacer()
-                        Text("\(bleManager.blocksReceived) / \(bleManager.totalBlocks)")
+                        Text("\(stats.blocksReceived) / \(stats.totalBlocks)")
                             .fontWeight(.semibold)
                     }
 
-                    ProgressView(value: Double(bleManager.blocksReceived),
-                               total: Double(bleManager.totalBlocks))
+                    ProgressView(value: Double(stats.blocksReceived),
+                               total: Double(stats.totalBlocks))
 
                     HStack {
                         Text("Progress:")
                         Spacer()
-                        Text(String(format: "%.1f%%", bleManager.progressPercent))
+                        Text(String(format: "%.1f%%", stats.progressPercent))
                             .fontWeight(.semibold)
                     }
 
                     HStack {
                         Text("Rate:")
                         Spacer()
-                        Text(String(format: "%.1f KB/s", bleManager.throughputKBps))
+                        Text(String(format: "%.1f KB/s", stats.throughputKBps))
                             .fontWeight(.semibold)
                     }
 
                     HStack {
                         Text("Data:")
                         Spacer()
-                        Text(String(format: "%.2f MB", bleManager.dataMB))
+                        Text(String(format: "%.2f MB", Double(stats.totalBytesReceived) / 1024.0 / 1024.0))
                             .fontWeight(.semibold)
                     }
 
-                    if bleManager.elapsedSeconds > 0 {
+                    if stats.elapsedSeconds > 0 {
                         HStack {
                             Text("Elapsed:")
                             Spacer()
-                            Text(bleManager.elapsedTimeString)
+                            Text(formatTime(stats.elapsedSeconds))
                                 .fontWeight(.semibold)
                         }
 
-                        HStack {
-                            Text("Remaining:")
-                            Spacer()
-                            Text(bleManager.estimatedRemainingTimeString)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.orange)
-                        }
+                        if stats.blocksReceived > 0 {
+                            HStack {
+                                Text("Remaining:")
+                                Spacer()
+                                Text(formatTime(estimateRemaining(stats: stats)))
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.orange)
+                            }
 
-                        HStack {
-                            Text("Est. Total:")
-                            Spacer()
-                            Text(bleManager.estimatedTotalTimeString)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.secondary)
+                            HStack {
+                                Text("Est. Total:")
+                                Spacer()
+                                Text(formatTime(estimateTotal(stats: stats)))
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.secondary)
+                            }
                         }
                     }
                 }
@@ -189,23 +190,23 @@ struct ContentView: View {
     private var controlButtons: some View {
         VStack(spacing: 12) {
             Button(action: {
-                if bleManager.isTransferActive {
-                    bleManager.stopTransfer()
+                if bleController.isTransferActive {
+                    bleController.stopTransfer()
                 } else {
-                    bleManager.startTransfer()
+                    bleController.startTransfer()
                 }
             }) {
                 HStack {
-                    Image(systemName: bleManager.isTransferActive ? "stop.fill" : "play.fill")
-                    Text(bleManager.isTransferActive ? "Stop Transfer" : "Start Transfer")
+                    Image(systemName: bleController.isTransferActive ? "stop.fill" : "play.fill")
+                    Text(bleController.isTransferActive ? "Stop Transfer" : "Start Transfer")
                 }
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(!bleManager.isConnected)
+            .disabled(!bleController.isConnected)
 
             Button(action: {
-                bleManager.startScanning()
+                bleController.startScanning()
             }) {
                 HStack {
                     Image(systemName: "antenna.radiowaves.left.and.right")
@@ -214,7 +215,7 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            .disabled(bleManager.isConnected)
+            .disabled(bleController.isConnected)
         }
     }
 
@@ -228,20 +229,41 @@ struct ContentView: View {
             return .gray
         }
     }
+
+    private func formatTime(_ seconds: Double) -> String {
+        let mins = Int(seconds) / 60
+        let secs = seconds - Double(mins * 60)
+        if mins > 0 {
+            return String(format: "%dm %.1fs", mins, secs)
+        } else {
+            return String(format: "%.1fs", seconds)
+        }
+    }
+
+    private func estimateRemaining(stats: PSoCTransferStats) -> Double {
+        guard stats.throughputKBps > 0 else { return 0 }
+        let remainingBytes = Double((stats.totalBlocks - stats.blocksReceived) * 7168)
+        return remainingBytes / (stats.throughputKBps * 1000.0)
+    }
+
+    private func estimateTotal(stats: PSoCTransferStats) -> Double {
+        guard stats.throughputKBps > 0 else { return 0 }
+        let totalBytes = Double(stats.totalBlocks * 7168)
+        return totalBytes / (stats.throughputKBps * 1000.0)
+    }
 }
 
 // Wrapper view to add flash animation
 struct WaveformFlashView: View {
-    let samples: [Int32]
-    let header: WaveformHeaderData
+    let waveform: PSoCWaveform
     let flashTrigger: UUID
 
     @State private var flashOpacity: Double = 1.0
 
     var body: some View {
-        WaveformView(samples: samples, header: header)
+        WaveformView(waveform: waveform)
             .opacity(flashOpacity)
-            .onChange(of: flashTrigger) { _ in
+            .onChange(of: flashTrigger) {
                 // Flash animation: briefly dim then restore
                 withAnimation(.easeOut(duration: 0.15)) {
                     flashOpacity = 0.3
